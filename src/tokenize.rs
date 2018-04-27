@@ -100,7 +100,7 @@ impl<R: BufRead> Tokens<R> {
     }
 
     /// Advances the stream, returning the next token if present, or any errors encountered.
-    pub fn next(&mut self) -> Result<Option<Token>, Error> {
+    pub fn next_res(&mut self) -> Result<Option<Token>, Error> {
         use self::Token::*;
         Ok(match self.input.next()? {
             Some('{') => Some(BeginGroup),
@@ -176,6 +176,17 @@ impl<R: BufRead> Tokens<R> {
     }
 }
 
+impl<R: BufRead> Iterator for Tokens<R> {
+    type Item = Result<Token, Error>;
+
+    fn next(&mut self) -> Option<Result<Token, Error>> {
+        match self.next_res() {
+            Ok(t) => t.map(Ok),
+            Err(e) => Some(Err(e)),
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -183,11 +194,8 @@ mod tests {
     #[test]
     fn simple() {
         let input = "{ab}".as_bytes();
-        let mut tokens = Tokens::new(input);
-        let mut output = Vec::new();
-        while let Ok(Some(tok)) = tokens.next() {
-            output.push(tok);
-        }
+        let tokens = Tokens::new(input);
+        let output = tokens.collect::<Result<Vec<_>, _>>().unwrap();
         assert_eq!(
             output,
             vec![
@@ -197,40 +205,31 @@ mod tests {
                 Token::EndGroup,
             ]
         );
-        assert!(tokens.next().unwrap().is_none());
     }
 
     #[test]
     fn command() {
         let input = "\\abc".as_bytes();
-        let mut tokens = Tokens::new(input);
-        let mut output = Vec::new();
-        while let Ok(Some(tok)) = tokens.next() {
-            output.push(tok);
-        }
+        let tokens = Tokens::new(input);
+        let output = tokens.collect::<Result<Vec<_>, _>>().unwrap();
         assert_eq!(output, vec![Token::Command(String::from("abc"))]);
-        assert!(tokens.next().unwrap().is_none());
     }
 
     #[test]
     fn verbatim() {
         let input = "\\verbatim!a\\b!".as_bytes();
-        let mut tokens = Tokens::new(input);
-        let mut output = Vec::new();
-        while let Ok(Some(tok)) = tokens.next() {
-            output.push(tok);
-        }
+        let tokens = Tokens::new(input);
+        let output = tokens.collect::<Result<Vec<_>, _>>().unwrap();
         assert_eq!(output, vec![Token::Verbatim(String::from("a\\b"))]);
-        assert!(tokens.next().unwrap().is_none());
     }
 
     #[test]
     fn verbatim_unclosed() {
         let input = "\\verbatim!a\\b".as_bytes();
-        let mut tokens = Tokens::new(input);
-        let err = tokens.next().unwrap_err();
+        let tokens = Tokens::new(input);
+        let output = tokens.collect::<Result<Vec<_>, _>>().unwrap_err();
         assert_eq!(
-            format!("{}", err),
+            format!("{}", output),
             "Unclosed `\\verbatim` command (started at line 1, column 9)"
         );
     }
@@ -238,12 +237,8 @@ mod tests {
     #[test]
     fn verbatim_escape() {
         let input = "\\verbatim!a!!b!".as_bytes();
-        let mut tokens = Tokens::new(input);
-        let mut output = Vec::new();
-        while let Ok(Some(tok)) = tokens.next() {
-            output.push(tok);
-        }
+        let tokens = Tokens::new(input);
+        let output = tokens.collect::<Result<Vec<_>, _>>().unwrap();
         assert_eq!(output, vec![Token::Verbatim(String::from("a!b"))]);
-        assert!(tokens.next().unwrap().is_none());
     }
 }
