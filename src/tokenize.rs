@@ -1,7 +1,7 @@
-use std::io::BufRead;
+use std::fmt;
+use std::io::{self, BufRead};
 
-use failure::Error;
-use failure::err_msg;
+use failure::{Backtrace, Context, Fail, ResultExt};
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum Token {
@@ -54,11 +54,13 @@ impl<R: BufRead> BufReadIter<R> {
 
     /// Fills the internal buffer, discarding its old contents.
     fn fill_buffer(&mut self) -> Result<(), Error> {
-        self.str_buf.clear();
-        self.input.read_line(&mut self.str_buf)?;
-        self.vec_buf = self.str_buf.chars().collect();
         self.column = 0;
         self.line += 1;
+        self.str_buf.clear();
+        self.input
+            .read_line(&mut self.str_buf)
+            .with_context(|e| ErrorKind::from_io(e, self.line))?;
+        self.vec_buf = self.str_buf.chars().collect();
         Ok(())
     }
 
@@ -75,7 +77,7 @@ impl<R: BufRead> BufReadIter<R> {
     /// Advances the iterator, returning the next character. If end of input is reached, returns an
     /// error.
     pub fn expect_next(&mut self) -> Result<char, Error> {
-        self.next()?.ok_or(err_msg("Unexpected end of input"))
+        self.next()?.ok_or(ErrorKind::EndOfInput.into())
     }
 
     /// Returns the next character in the line without advancing the stream. A `None` value just
@@ -165,11 +167,7 @@ impl<R: BufRead> Tokens<R> {
                     Some(_) | None => break,
                 },
                 Some(c) => verb.push(c),
-                None => Err(format_err!(
-                    "Unclosed `\\verbatim` command (started at line {}, column {})",
-                    start_line,
-                    start_column
-                ))?,
+                None => Err(ErrorKind::UnclosedVerbatim(start_line, start_column))?,
             }
         }
         Ok(verb)
@@ -183,6 +181,68 @@ impl<R: BufRead> Iterator for Tokens<R> {
         match self.next_res() {
             Ok(t) => t.map(Ok),
             Err(e) => Some(Err(e)),
+        }
+    }
+}
+
+#[derive(Debug)]
+pub struct Error {
+    inner: Context<ErrorKind>,
+}
+
+impl Error {
+    pub fn kind(&self) -> ErrorKind {
+        *self.inner.get_context()
+    }
+}
+
+impl Fail for Error {
+    fn cause(&self) -> Option<&Fail> {
+        self.inner.cause()
+    }
+
+    fn backtrace(&self) -> Option<&Backtrace> {
+        self.inner.backtrace()
+    }
+}
+
+impl fmt::Display for Error {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        fmt::Display::fmt(&self.inner, f)
+    }
+}
+
+impl From<ErrorKind> for Error {
+    fn from(kind: ErrorKind) -> Error {
+        Error {
+            inner: Context::new(kind),
+        }
+    }
+}
+
+impl From<Context<ErrorKind>> for Error {
+    fn from(inner: Context<ErrorKind>) -> Error {
+        Error { inner }
+    }
+}
+
+#[derive(Clone, Copy, Debug, Eq, Fail, PartialEq)]
+pub enum ErrorKind {
+    #[fail(display = "Unexpected end of input")]
+    EndOfInput,
+    #[fail(display = "Unclosed `\\verbatim` command (started at line {}, column {})", _0, _1)]
+    UnclosedVerbatim(usize, usize),
+    #[fail(display = "Invalid UTF-8 in line {}", _0)]
+    Unicode(usize),
+    #[fail(display = "An IO error occurred while reading line {}", _0)]
+    Io(usize),
+}
+
+impl ErrorKind {
+    pub fn from_io(err: &io::Error, line: usize) -> ErrorKind {
+        match err.kind() {
+            io::ErrorKind::InvalidData => ErrorKind::Unicode(line),
+            _ => ErrorKind::Io(line),
         }
     }
 }
@@ -228,10 +288,7 @@ mod tests {
         let input = "\\verbatim!a\\b".as_bytes();
         let tokens = Tokens::new(input);
         let output = tokens.collect::<Result<Vec<_>, _>>().unwrap_err();
-        assert_eq!(
-            format!("{}", output),
-            "Unclosed `\\verbatim` command (started at line 1, column 9)"
-        );
+        assert_eq!(output.kind(), ErrorKind::UnclosedVerbatim(1, 9));
     }
 
     #[test]
@@ -240,5 +297,13 @@ mod tests {
         let tokens = Tokens::new(input);
         let output = tokens.collect::<Result<Vec<_>, _>>().unwrap();
         assert_eq!(output, vec![Token::Verbatim(String::from("a!b"))]);
+    }
+
+    #[test]
+    fn invalid_unicode() {
+        let input: &[u8] = b"a\xff";
+        let tokens = Tokens::new(input);
+        let output = tokens.collect::<Result<Vec<_>, _>>().unwrap_err();
+        assert_eq!(output.kind(), ErrorKind::Unicode(1));
     }
 }
