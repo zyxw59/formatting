@@ -1,0 +1,71 @@
+\document {Example Document}.
+\tableofcontents.
+
+\section Introduction *.
+Lorem ipsum dolor sit amet
+\endsection.
+
+\section Cats.
+\section {Big ones}.
+they're big! i love them
+\endsection.
+
+\section {Little ones}.
+they're smol! i love them
+\endsection.
+\endsection.
+\enddocument.
+
+\comment\verbatim!
+Document {
+    metadata: { title: "Example Document" },
+    elements: [
+    Block::Container({
+        kind: ContainerKind::Section({
+            name: "Introduction",
+            id: "introduction",
+        }),
+        elements: [
+        Block::Paragraph({
+            elements: [
+            Inline::Text("Lorem ipsum dolor sit amet"),
+            ],
+        }),
+        ],
+    }),
+    Block::Container({
+        kind: ContainerKind::Section({
+            name: "Cats",
+            id: "cats",
+        }),
+        elements: [
+        Block::Container({
+            kind: ContainerKind::Section({
+                name: "Big ones",
+                id: "big-ones",
+            }),
+            elements: [
+            Block::Paragraph({
+                elements: [
+                Inline::Text("they're big! i love them"),
+                ],
+            }),
+            ],
+        }),
+        Block::Container({
+            kind: ContainerKind::Section({
+                name: "Little ones",
+                id: "little-ones",
+            }),
+            elements: [
+            Block::Paragraph({
+                elements: [
+                Inline::Text("they're smol! i love them"),
+                ],
+            }),
+            ],
+        }),
+        ],
+    }),
+    ],
+}!.
