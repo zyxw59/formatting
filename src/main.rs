@@ -2,7 +2,7 @@ extern crate failure;
 #[macro_use]
 extern crate failure_derive;
 
-mod tokenize;
+mod parser;
 
 fn main() {
     println!("Hello, world!");
