@@ -9,7 +9,7 @@ use errors::{Error, ErrorKind};
 /// This struct is not actually an `Iterator`, because `next` returns `Result<Option<char>,
 /// Error>`, instead of `Option<_>`.
 #[derive(Debug)]
-struct BufReadIter<R> {
+pub struct BufReadIter<R> {
     input: R,
     str_buf: String,
     vec_buf: Vec<char>,
@@ -72,10 +72,4 @@ impl<R: BufRead> BufReadIter<R> {
     pub fn peek(&mut self) -> Option<&char> {
         self.vec_buf.get(self.column + 1)
     }
-}
-
-/// A structure for parsing an input stream
-#[derive(Debug)]
-pub struct Parser<R> {
-    input: BufReadIter<R>,
 }
