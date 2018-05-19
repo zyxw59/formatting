@@ -67,9 +67,15 @@ impl<R: BufRead> BufReadIter<R> {
         self.next()?.ok_or(ErrorKind::EndOfInput.into())
     }
 
+    /// Returns the current character. A `None` value indicates that the end of the text has been
+    /// reached.
+    pub fn current(&self) -> Option<&char> {
+        self.vec_buf.get(self.column + 1)
+    }
+
     /// Returns the next character in the line without advancing the stream. A `None` value just
     /// indicates that the end of the line has been reached, not necessarily the end of the text.
-    pub fn peek(&mut self) -> Option<&char> {
+    pub fn peek(&self) -> Option<&char> {
         self.vec_buf.get(self.column + 1)
     }
 }
